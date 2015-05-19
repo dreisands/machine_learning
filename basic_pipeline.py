@@ -147,7 +147,7 @@ def clf_cv_loop(classifiers, x_data, y_data):
 			total = t1-t0
 			poss_times.append(total)
 		y_pred[i] = poss_class
-		eval_scores[i] = {'time': poss_times}
+		eval_scores[i] = {'training_time': poss_times}
 	return y_pred, eval_scores
 
 def run_cv(x, y, clf_class, *args, **kwargs):

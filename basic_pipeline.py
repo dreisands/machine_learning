@@ -1,4 +1,5 @@
 # Trey Sands
+# dreisands
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,17 +8,17 @@ import re
 import random
 from sklearn.cross_validation import KFold
 from sklearn.preprocessing import Imputer
-from sklearn.linear_model import LogisticRegression as LR
-from sklearn.neighbors import NearestNeighbors as NN
-from sklearn.neighbors import KNeighborsClassifier as KNC
-from sklearn.tree import DecisionTreeClassifier as DTC
-from sklearn.svm import LinearSVC as LSVC
-from sklearn.ensemble import RandomForestClassifier as RFC 
-from sklearn.ensemble import AdaBoostClassifier as ABC 
-from sklearn.ensemble import BaggingClassifier as BC 
-from sklearn.metrics import accuracy_score as AS, precision_score as PS 
-from sklearn.metrics import recall_score as RS, precision_recall_curve as PRC
-from sklearn.metrics import roc_auc_score as RAS, f1_score as FS
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier 
+from sklearn.svm import LinearSVC
+from sklearn.ensemble import RandomForestClassifier 
+from sklearn.ensemble import AdaBoostClassifier 
+from sklearn.ensemble import BaggingClassifier
+from sklearn.metrics import accuracy_score, precision_score
+from sklearn.metrics import recall_score, precision_recall_curve
+from sklearn.metrics import roc_auc_score, f1_score
 import time
 
 def main():
@@ -36,12 +37,20 @@ def main():
 	features = ['revolving_utilization_of_unsecured_lines', 'debt_ratio',
             'monthly_income', 'age', 'number_of_times90_days_late']
 	
-	classifiers = {'LR': {'class': LR}, 'KNC': {'class': KNC}, 
-		'DTC': {'class': DTC}, 'LSVC': {'class': LSVC}, 'RFC': {'class': RFC}, 
-		'ABC': {'class': ABC}, 'BC': {'class': BC}}
+	classifiers = 	{'LogisticRegression': {'class': LogisticRegression}, 
+					'KNeighborsClassifier': {'class': KNeighborsClassifier}, 
+					'DecisionTreeClassifier': {'class': DecisionTreeClassifier}, 
+					'LinearSVC': {'class': LinearSVC}, 
+					'RandomForestClassifier': {'class': RandomForestClassifier}, 
+					'AdaBoostClassifier': {'class': AdaBoostClassifier}, 
+					'BaggingClassifier': {'class': BaggingClassifier}}
 
-	#classifiers = {'DTC': {'class': DTC}}
-	evals = {'AS': AS, 'PS': PS, 'RS': RS, 'FS': FS, 'RAS': RAS, 'PRC': PRC}
+	evals = {'accuracy_score': accuracy_score, 
+			'precision_score': precision_score, 
+			'recall_score': recall_score, 
+			'f1_score': f1_score, 
+			'roc_auc_score': roc_auc_score, 
+			'precision_recall_curve': precision_recall_curve}
 	
 	#Creating lists to loop over for parameters
 	for i in range(10):
@@ -70,9 +79,9 @@ def main():
 	
 	x_data = train[features]
 	y_data = train['serious_dlqin2yrs']
-	y_pred, eval_scores = clf_cv_loop(classifiers, x_data, y_data)
+	y_pred, eval_scores, y_pred_proba = clf_cv_loop(classifiers, x_data, y_data)
 	
-	eval_clfs(y_pred, y_data, evals, classifiers, eval_scores)
+	eval_clfs(y_pred, y_data, evals, classifiers, eval_scores, y_pred_proba)
 
 def import_data(file_name):
 	return pd.read_csv(file_name)
@@ -137,23 +146,29 @@ def create_binary_from_cat(data, new_col_name, col_name, one):
 def clf_cv_loop(classifiers, x_data, y_data):
 	y_pred = {}
 	eval_scores = {}
+	y_pred_proba = {}
 	for i, j in classifiers.iteritems():
 		poss_class = []
 		poss_times = []
+		poss_class_y_pred_prob =[]
 		for k in j['kwords_list']:
 			t0 = time.time()
-			poss_class.append(run_cv(x_data, y_data, j['class'], k))
+			temp_1, temp_2 = run_cv(x_data, y_data, classifier['class'], k)
+			poss_class_y_pred.append(temp_1)
+			poss_class_y_pred_prob.append(temp_2)
 			t1 = time.time()
 			total = t1-t0
 			poss_times.append(total)
 		y_pred[i] = poss_class
-		eval_scores[i] = {'training_time': poss_times}
-	return y_pred, eval_scores
+		eval_scores[i] = {'time': poss_times}
+		y_pred_proba[i] = poss_class_y_pred
+	return y_pred, eval_scores, y_pred_proba
 
 def run_cv(x, y, clf_class, *args, **kwargs):
 	# Construct a kfolds object
 	kf = KFold(len(y),n_folds=5,shuffle=True)
 	y_pred = y.copy()
+	y_pred_proba = y.copy()
 	# Iterate through folds
 	for train_index, test_index in kf:
 		x_train = x.ix[train_index]
@@ -165,25 +180,35 @@ def run_cv(x, y, clf_class, *args, **kwargs):
 		clf = clf_class(**kwargs)
 		clf.fit(x_train,y_train)
 		y_pred[test_index] = clf.predict(x_test)
-	return y_pred
+		y_pred_proba[test_index] = clf.predict_proba(x_test)
+	return y_pred, y_pred_proba
 
-def eval_clfs(y_pred, y_data, evals, classifiers, eval_scores):
+def eval_clfs(y_pred, y_data, evals, classifiers, eval_scores, y_pred_proba):
 	for i, j in y_pred.iteritems():
 		f = open('./output/'+i+'_evals_table.csv', 'w')
 		f.write('parameters\ttime\t')
 		for k, l in evals.iteritems():
 			f.write(k+'\t')
+		f.write('precisions\trecalls\tthresholds\t')
 		f.write('\n')
 		for k in range(len(j)):
 			f.write(str(classifiers[i]['kwords_list'][k])+'\t')
 			f.write(str(eval_scores[i]['time'][k])+'\t')
 			for l, m in evals.iteritems():
-				clf_temp = eval_scores.get(i)
+			if l == 'precision_recall_curve':
+				precision, recall, thresholds = m(y_data, y_pred_proba[i][k])
+				#plt.clf()
+				#plt.plot(recall, precision, label='Precision-Recall curve')
+				#plt.xlabel('Recall')
+				#plt.ylabel('Precision')
+				#plt.ylim([0.0, 1.05])
+				#plt.xlim([0.0, 1.0])
+				#plt.title('Precision-Recall '+classifier_name+' '+ str(classifier['kwords_list'][k]))
+				#plt.legend(loc="lower left")
+				#plt.savefig('./output/'+classifier_name+'_'+str(classifier['kwords_list'][k])+'.png')
+				f.write(str(precision)+'\t'+str(recall)+'\t'+str(thresholds)+'\t')
+			else:
 				eval_temp = m(y_data, j[k])
-				kword_temp = clf_temp.get(l,[])
-				kword_temp.append(eval_temp)
-				clf_temp[l] = kword_temp
-				eval_scores[i] = clf_temp
 				f.write(str(eval_temp)+'\t')
 			f.write('\n')
 		f.close()

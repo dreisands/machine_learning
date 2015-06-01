@@ -26,24 +26,17 @@ def main():
 	train = drop_columns(train, [train.columns[0]])
 	train.columns = [camel_to_snake(col) for col in train.columns]
 	
-	explore_data(train)
-	make_hist(train, column = 'revolving_utilization_of_unsecured_lines', 
-		bins = 3)
-	make_hist(train, column = 'age', bins = 10)
-	make_hist(train, column = 'number_of_dependents', bins = 10)
-	make_hist(train, column = 'number_of_open_credit_lines_and_loans'
-		, bins = 10)
 	
 	features = ['revolving_utilization_of_unsecured_lines', 'debt_ratio',
             'monthly_income', 'age', 'number_of_times90_days_late']
 	
 	classifiers = 	{'LogisticRegression': {'class': LogisticRegression}, 
 					'KNeighborsClassifier': {'class': KNeighborsClassifier}, 
-					'DecisionTreeClassifier': {'class': DecisionTreeClassifier}, 
-					'LinearSVC': {'class': LinearSVC}, 
+					'DecisionTreeClassifier': {'class': DecisionTreeClassifier},
 					'RandomForestClassifier': {'class': RandomForestClassifier}, 
 					'AdaBoostClassifier': {'class': AdaBoostClassifier}, 
-					'BaggingClassifier': {'class': BaggingClassifier}}
+					'BaggingClassifier': {'class': BaggingClassifier}
+					}
 
 	evals = {'accuracy_score': accuracy_score, 
 			'precision_score': precision_score, 
@@ -54,28 +47,27 @@ def main():
 	
 	#Creating lists to loop over for parameters
 	for i in range(10):
-		temp = classifiers['KNC'].get('kwords_list', [])
+		temp = classifiers['KNeighborsClassifier'].get('kwords_list', [])
 		temp.append({'n_neighbors': i})
-		classifiers['KNC']['kwords_list'] = temp
+		classifiers['KNeighborsClassifier']['kwords_list'] = temp
 	for i in range(1,6,1):
-		temp = classifiers['DTC'].get('kwords_list', [])
+		temp = classifiers['DecisionTreeClassifier'].get('kwords_list', [])
 		temp.append({'max_depth': i})
-		classifiers['DTC']['kwords_list'] = temp
+		classifiers['DecisionTreeClassifier']['kwords_list'] = temp
 	for i in range(2,22,2):
-		temp = classifiers['RFC'].get('kwords_list', [])
+		temp = classifiers['RandomForestClassifier'].get('kwords_list', [])
 		temp.append({'n_estimators': i})
-		classifiers['RFC']['kwords_list'] = temp
+		classifiers['RandomForestClassifier']['kwords_list'] = temp
 	for i in range(50, 110, 10):
-		temp = classifiers['ABC'].get('kwords_list', [])
+		temp = classifiers['AdaBoostClassifier'].get('kwords_list', [])
 		temp.append({'n_estimators': i})
-		classifiers['ABC']['kwords_list'] = temp
+		classifiers['AdaBoostClassifier']['kwords_list'] = temp
 	for i in range(6, 16, 2):
-		temp = classifiers['BC'].get('kwords_list', [])
+		temp = classifiers['BaggingClassifier'].get('kwords_list', [])
 		temp.append({'n_estimators': i})
-		classifiers['BC']['kwords_list'] = temp
+		classifiers['BaggingClassifier']['kwords_list'] = temp
 
-	classifiers['LR']['kwords_list'] = [{'C': 1.0}]
-	classifiers['LSVC']['kwords_list'] = [{'C': 1.0}]
+	classifiers['LogisticRegression']['kwords_list'] = [{'C': 1.0}]
 	
 	x_data = train[features]
 	y_data = train['serious_dlqin2yrs']
@@ -148,20 +140,20 @@ def clf_cv_loop(classifiers, x_data, y_data):
 	eval_scores = {}
 	y_pred_proba = {}
 	for i, j in classifiers.iteritems():
-		poss_class = []
+		poss_class_y_pred = []
 		poss_times = []
 		poss_class_y_pred_prob =[]
 		for k in j['kwords_list']:
 			t0 = time.time()
-			temp_1, temp_2 = run_cv(x_data, y_data, classifier['class'], k)
+			temp_1, temp_2 = run_cv(x_data, y_data, j['class'], k)
 			poss_class_y_pred.append(temp_1)
 			poss_class_y_pred_prob.append(temp_2)
 			t1 = time.time()
 			total = t1-t0
 			poss_times.append(total)
-		y_pred[i] = poss_class
+		y_pred[i] = poss_class_y_pred
 		eval_scores[i] = {'time': poss_times}
-		y_pred_proba[i] = poss_class_y_pred
+		y_pred_proba[i] = poss_class_y_pred_prob
 	return y_pred, eval_scores, y_pred_proba
 
 def run_cv(x, y, clf_class, *args, **kwargs):
@@ -195,21 +187,21 @@ def eval_clfs(y_pred, y_data, evals, classifiers, eval_scores, y_pred_proba):
 			f.write(str(classifiers[i]['kwords_list'][k])+'\t')
 			f.write(str(eval_scores[i]['time'][k])+'\t')
 			for l, m in evals.iteritems():
-			if l == 'precision_recall_curve':
-				precision, recall, thresholds = m(y_data, y_pred_proba[i][k])
-				#plt.clf()
-				#plt.plot(recall, precision, label='Precision-Recall curve')
-				#plt.xlabel('Recall')
-				#plt.ylabel('Precision')
-				#plt.ylim([0.0, 1.05])
-				#plt.xlim([0.0, 1.0])
-				#plt.title('Precision-Recall '+classifier_name+' '+ str(classifier['kwords_list'][k]))
-				#plt.legend(loc="lower left")
-				#plt.savefig('./output/'+classifier_name+'_'+str(classifier['kwords_list'][k])+'.png')
-				f.write(str(precision)+'\t'+str(recall)+'\t'+str(thresholds)+'\t')
-			else:
-				eval_temp = m(y_data, j[k])
-				f.write(str(eval_temp)+'\t')
+				if l == 'precision_recall_curve':
+					precision, recall, thresholds = m(y_data, y_pred_proba[i][k])
+					plt.clf()
+					plt.plot(recall, precision, label='Precision-Recall curve')
+					plt.xlabel('Recall')
+					plt.ylabel('Precision')
+					plt.ylim([0.0, 1.05])
+					plt.xlim([0.0, 1.0])
+					plt.title('Precision-Recall '+i+' '+ str(classifiers[i]['kwords_list'][k]))
+					plt.legend(loc="lower left")
+					plt.savefig('./output/'+i+'_'+str(classifiers[i]['kwords_list'][k])+'.png')
+					f.write(str(precision)+'\t'+str(recall)+'\t'+str(thresholds)+'\t')
+				else:
+					eval_temp = m(y_data, j[k])
+					f.write(str(eval_temp)+'\t')
 			f.write('\n')
 		f.close()
 
